@@ -128,6 +128,10 @@ _SPLITCON=8
 _MINSPLITSZ="1M"
 _PIECEALGO="default"
 
+# Make available to progress indicators.
+export DLLISTCOUNT=0
+export DLLISTBYTES=0
+
 # Prefix in front of apt-fast output:
 aptfast_prefix=
 
@@ -243,7 +247,15 @@ get_uris(){
   echo "# apt-fast mirror list: $(date)" > "$DLLIST"
   #NOTE: aptitude doesn't have this functionality, so we use apt-get to get
   #      package URIs.
-  for urimd5 in $(apt-get -y --print-uris "$@" | egrep "^'(http(s|)|(s|)ftp)://[^']+'.+ MD5Sum:\S+\s*$" |
+  apturis=$(apt-get -qq --print-uris "$@")
+  DLLISTCOUNT=$( echo "$apturis" | grep -c "^'" )
+  DLLISTBYTES=$( echo "$apturis" \
+    | while read line; do
+        echo $line | cut -d' ' -f3
+      done \
+    | awk '{total = total + $1}END{print total}' \
+    | numfmt --from=si )
+  for urimd5 in $( echo "$apturis" | egrep "^'(http(s|)|(s|)ftp)://[^']+'.+ MD5Sum:\S+\s*$" |
       sed "s/^'\(.\+\)'.*MD5Sum:\(\S\+\)\s*$/\1::MD5Sum:\2/"); do
   #for urimd5 in $(cat foo | egrep "^'(http(s|)|(s|)ftp)://[^']+'.+ MD5Sum:\S+\s*$" |
   #    sed "s/^'\(.\+\)'.*MD5Sum:\(\S\+\)\s*$/\1::MD5Sum:\2/"); do
@@ -303,7 +315,7 @@ if [ "$option" == "install" ]; then
   # Then download all files from the list.
   if [ $(cat "$DLLIST" | wc -l) -gt 0 ] && [ ! "$DOWNLOADBEFORE" ]; then
     cat "$DLLIST"
-
+    echo " Need to get $(numfmt --to iec-i --suffix="B" $DLLISTBYTES) of archives from $DLLISTCOUNT packages."
     echo -ne "${cRed} If you want to download the packages on your system press Y else n to abort. [Y/n]:  ${endColor}"
 
     while ((!updsys)); do
@@ -317,6 +329,7 @@ if [ "$option" == "install" ]; then
     done
   else
     result=1
+    echo " Downloading $(numfmt --to iec-i --suffix="B" $DLLISTBYTES) of archives from $DLLISTCOUNT packages."
   fi
 
   echo
